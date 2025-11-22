@@ -14,12 +14,12 @@
                 <div class="control">
                     <ul>
                         <li>Camera settings</li>
-                        <li><span class="red-font">X</span><span id="x_crd">=&nbsp;0.5</span></li>
-                        <li><input type="range" id="xt" min="-1" max="1" step="0.01" value="0.5"></li>
-                        <li><span class="green-font">Y</span><span id="y_crd">=&nbsp;0.5</span></li>
-                        <li><input type="range" id="yt" min="-1" max="1" step="0.01" value="0.5"></li>
-                        <li><span class="blue-font">Z</span><span id="z_crd">=&nbsp;0.5</span></li>
-                        <li><input type="range" id="zt" min="-1" max="1" step="0.01" value="0.5"></li>
+                        <li><span class="red-font">X</span><span id="x_crd">=&nbsp;0.0</span></li>
+                        <li><input type="range" id="xt" min="-5" max="5" step="0.01" value="0.0"></li>
+                        <li><span class="green-font">Y</span><span id="y_crd">=&nbsp;0.0</span></li>
+                        <li><input type="range" id="yt" min="-5" max="5" step="0.01" value="0.0"></li>
+                        <li><span class="blue-font">Z</span><span id="z_crd">=&nbsp;1.8</span></li>
+                        <li><input type="range" id="zt" min="-5" max="5" step="0.01" value="1.8"></li>
                         <li><span>FoV</span><span id="fovy">=&nbsp;45</span></li>
                         <li><input type="range" id="fov" min="10" max="100" step="1" value="45"></li>
                         <li>Light position</li>
@@ -58,34 +58,34 @@
   // ----------------------------------------------
   // Complete the GLSL program
   // ----------------------------------------------
+  attribute vec4 vPosition;
+  attribute vec3 vNormal;
   
-  attribute vec3 a_position;
-  attribute vec3 a_normal;
+  uniform mat4 modelViewMatrix;
+  uniform mat4 projectionMatrix;
+  uniform mat3 normalMatrix;
+  uniform vec4 lightPosition;
   
-  uniform mat4 u_model_matrix;
-  uniform mat4 u_view_matrix;
-  uniform mat4 u_projection_matrix;
-  uniform mat3 u_normal_matrix;
-  uniform vec3 u_light_position;
+  varying vec3 fN;
+  varying vec3 fL;
+  varying vec3 fE;
   
-  varying vec3 v_normal;
-  varying vec3 v_light_direction;
-  varying vec3 v_view_direction;
-
   void main() {
-    // Transform position
-    vec4 world_position = u_model_matrix * vec4(a_position, 1.0);
-    vec4 view_position = u_view_matrix * world_position;
-    gl_Position = u_projection_matrix * view_position;
+    // Transform vertex position
+    vec3 pos = (modelViewMatrix * vPosition).xyz;
     
     // Transform normal
-    v_normal = normalize(u_normal_matrix * a_normal);
+    fN = normalize(normalMatrix * vNormal);
     
-    // Calculate light direction (from vertex to light)
-    v_light_direction = normalize(u_light_position - world_position.xyz);
+    // Light direction
+    fL = normalize(lightPosition.xyz - pos);
     
-    // Calculate view direction (from vertex to camera)
-    v_view_direction = normalize(-view_position.xyz);
+    // Eye direction (viewer is at origin in eye coordinates)
+    fE = normalize(-pos);
+    
+    // Output position
+    gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+
   }
 
 </script>
@@ -105,37 +105,40 @@
   // ----------------------------------------------
   // Complete the GLSL program
   // ----------------------------------------------
+  uniform vec4 objectColor;
   
-  uniform vec3 u_color;
+  varying vec3 fN;
+  varying vec3 fL;
+  varying vec3 fE;
   
-  varying vec3 v_normal;
-  varying vec3 v_light_direction;
-  varying vec3 v_view_direction;
-   
   void main() {
-    // Normalize interpolated vectors
-    vec3 normal = normalize(v_normal);
-    vec3 light_dir = normalize(v_light_direction);
-    vec3 view_dir = normalize(v_view_direction);
+    vec3 N = normalize(fN);
+    vec3 L = normalize(fL);
+    vec3 E = normalize(fE);
+    vec3 H = normalize(L + E);
     
-    // Calculate reflection vector
-    vec3 reflect_dir = reflect(-light_dir, normal);
+    vec4 lightAmbient = vec4(1.0, 1.0, 1.0, 1.0);
+    vec4 lightDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
+    vec4 lightSpecular = vec4(1.0, 1.0, 1.0, 1.0);
     
-    // Ambient component
-    vec3 ambient = ka.rgb * u_color;
+    vec4 ks = vec4(1.0, 1.0, 1.0, 1.0);
     
-    // Diffuse component
-    float diff = max(dot(normal, light_dir), 0.0);
-    vec3 diffuse = kd.rgb * diff * u_color;
+    vec4 ambient = ka * lightAmbient * objectColor;
     
-    // Specular component
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), shininess);
-    vec3 specular = vec3(1.0, 1.0, 1.0) * spec;
+    float diffuseFactor = max(dot(L, N), 0.0);
+    vec4 diffuse = kd * lightDiffuse * objectColor * diffuseFactor;
     
-    // Combine all components
-    vec3 final_color = ambient + diffuse + specular;
+    float specularFactor = pow(max(dot(N, H), 0.0), shininess);
+    vec4 specular = ks * lightSpecular * specularFactor;
     
-    gl_FragColor = vec4(final_color, 1.0);
+    if (dot(L, N) < 0.0) {
+        specular = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    
+    gl_FragColor = ambient + diffuse + specular;
+    gl_FragColor.a = 1.0;
+   
+ 
   }
 
  </script>

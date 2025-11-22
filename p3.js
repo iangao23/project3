@@ -214,8 +214,8 @@ let mgs_y_rot = 0;
 // ----------------------------------------------
 // camera parameters
 // ----------------------------------------------
-let xt = 0.5;
-let yt = 0.5;
+let xt = 0.0;
+let yt = 0.0;
 let zt = 0.5;
 let fov = 45;
 
@@ -298,7 +298,9 @@ document.getElementById("lyt").addEventListener("input", function (e) {
 });
 
 document.getElementById("reset_cl").addEventListener("click", function (e) {
-    xt = yt = zt = 0.5;
+    xt = 0.0;
+    yt = 0.0;
+    zt = 0.5;
     lxt = lyt = lzt = 1.0;
     fov = 45;
     document.getElementById("xt").value = xt;
@@ -404,8 +406,52 @@ function calculateNormals(vertices, indices) {
 
 // Prepare model data
 function prepareModelData() {
-    // Convert Mars data
-    mars_vertices = V_p.map(v => vec3(v[0], v[1], v[2]));
+    // Find bounding box center for better centering
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    for (let i = 0; i < V_p.length; i++) {
+        minX = Math.min(minX, V_p[i][0]); maxX = Math.max(maxX, V_p[i][0]);
+        minY = Math.min(minY, V_p[i][1]); maxY = Math.max(maxY, V_p[i][1]);
+        minZ = Math.min(minZ, V_p[i][2]); maxZ = Math.max(maxZ, V_p[i][2]);
+    }
+
+    let centerX = (minX + maxX) / 2;
+    let centerY = (minY + maxY) / 2;
+    let centerZ = (minZ + maxZ) / 2;
+
+    // Find average radius for scaling
+    let avgRadius = 0;
+    for (let i = 0; i < V_p.length; i++) {
+        let x = V_p[i][0] - centerX;
+        let y = V_p[i][1] - centerY;
+        let z = V_p[i][2] - centerZ;
+        avgRadius += Math.sqrt(x*x + y*y + z*z);
+    }
+    avgRadius /= V_p.length;
+
+    // Convert Mars data: center it, blend sphere with terrain for texture
+    mars_vertices = V_p.map(v => {
+        // Center the vertex
+        let x = v[0] - centerX;
+        let y = v[1] - centerY;
+        let z = v[2] - centerZ;
+
+        // Get normalized direction
+        let len = Math.sqrt(x*x + y*y + z*z);
+        if (len > 0) {
+            // Blend: 60% sphere, 40% original terrain for more texture detail
+            let sphereBlend = 0.60;
+            let targetRadius = 0.15;
+            let sphereLen = targetRadius;
+            let originalLen = (len / avgRadius) * targetRadius;
+            let finalLen = sphereLen * sphereBlend + originalLen * (1 - sphereBlend);
+
+            return vec3(x/len * finalLen, y/len * finalLen, z/len * finalLen);
+        }
+        return vec3(x, y, z);
+    });
     mars_indices = F_p.flat();
     mars_normals = calculateNormals(mars_vertices, mars_indices);
     
@@ -462,11 +508,11 @@ function drawMars(attributes) {
     
     // Model matrix for Mars (rotation only)
     let model_matrix = rotateY(mars_y_rot);
-    gl.uniformMatrix4fv(u_model_matrix, false, flatten(model_matrix));
-    
+    gl.uniformMatrix4fv(u_model_matrix, false, new Float32Array(model_matrix));
+
     // Normal matrix
     let normal_matrix = normalMatrix(model_matrix, true);
-    gl.uniformMatrix3fv(u_normal_matrix, false, flatten(normal_matrix));
+    gl.uniformMatrix3fv(u_normal_matrix, false, new Float32Array(normal_matrix));
     
     // Bind Mars buffers and set attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, mars_vertex_buffer);
@@ -499,11 +545,11 @@ function drawMGS(attributes) {
     let scale_matrix = scalem(0.3, 0.3, 0.3);
     
     let model_matrix = mult(translation_matrix, mult(rotation_matrix, scale_matrix));
-    gl.uniformMatrix4fv(u_model_matrix, false, flatten(model_matrix));
-    
+    gl.uniformMatrix4fv(u_model_matrix, false, new Float32Array(model_matrix));
+
     // Normal matrix
     let normal_matrix = normalMatrix(model_matrix, true);
-    gl.uniformMatrix3fv(u_normal_matrix, false, flatten(normal_matrix));
+    gl.uniformMatrix3fv(u_normal_matrix, false, new Float32Array(normal_matrix));
     
     // Bind MGS buffers and set attributes
     gl.bindBuffer(gl.ARRAY_BUFFER, mgs_vertex_buffer);
@@ -523,11 +569,11 @@ function draw() {
     // Set up camera
     let eye = vec3(xt, yt, zt);
     let view_matrix = lookAt(eye, at, up);
-    gl.uniformMatrix4fv(u_view_matrix, false, flatten(view_matrix));
-    
+    gl.uniformMatrix4fv(u_view_matrix, false, new Float32Array(view_matrix));
+
     // Set up projection
-    let projection_matrix = perspective(fov, canvas.width / canvas.height, 0.1, 10.0);
-    gl.uniformMatrix4fv(u_projection_matrix, false, flatten(projection_matrix));
+    let projection_matrix = perspective(fov, canvas.width / canvas.height, 0.01, 10.0);
+    gl.uniformMatrix4fv(u_projection_matrix, false, new Float32Array(projection_matrix));
     
     // Set light position
     gl.uniform3f(u_light_position, lxt, lyt, lzt);
